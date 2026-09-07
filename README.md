@@ -6,7 +6,8 @@ subtitle track someone else timed against a different rip. Or you've got an
 Python library plus a CLI for the handful of things I keep needing to do to
 subtitle files: shift every timestamp by a fixed offset, convert between
 formats, and check whether a file has overlapping cues (usually a sign the
-timing is broken).
+timing is broken). Input can be .srt or WebVTT; every command figures out
+which one it's looking at from the content.
 
 No dependencies beyond the standard library.
 
@@ -73,6 +74,6 @@ it's easy to filter, merge, or rewrite cues by hand before calling `dump`.
 
 ## Status
 
-Handles well-formed .srt input and writes .srt or .vtt output. Doesn't yet
-read .vtt, .ass, or .sub, and doesn't fix overlaps automatically. See the
-source for the full surface — it's under 300 lines.
+Handles well-formed .srt and WebVTT input, and writes .srt or .vtt output.
+Doesn't yet read .ass or .sub, and doesn't fix overlaps automatically. See
+the source for the full surface — it's under 350 lines.

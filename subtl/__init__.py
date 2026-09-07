@@ -10,6 +10,12 @@ __version__ = "0.1.0"
 _TIME_RE = re.compile(r"(\d+):(\d{2}):(\d{2})[,.](\d{3})")
 _TIMESTAMP_RE = re.compile(r"(\d+:\d{2}:\d{2}[,.]\d{3})\s*-->\s*(\d+:\d{2}:\d{2}[,.]\d{3})")
 
+# WebVTT timestamps drop the hours component when it's zero, unlike .srt.
+_VTT_TIME_RE = re.compile(r"(?:(\d+):)?(\d{2}):(\d{2})\.(\d{3})")
+_VTT_TIMESTAMP_RE = re.compile(
+    r"((?:\d+:)?\d{2}:\d{2}\.\d{3})\s*-->\s*((?:\d+:)?\d{2}:\d{2}\.\d{3})"
+)
+
 
 class SubtitleError(ValueError):
     """Raised when a subtitle file can't be parsed."""
@@ -66,6 +72,58 @@ def parse(text: str) -> list[Cue]:
         cues.append(Cue(index=len(cues) + 1, start_ms=start_ms, end_ms=end_ms,
                          text="\n".join(text_lines)))
     return cues
+
+
+def parse_vtt_timestamp(raw: str) -> int:
+    """Convert a WebVTT timestamp ('HH:MM:SS.mmm' or 'MM:SS.mmm') to milliseconds."""
+    m = _VTT_TIME_RE.match(raw.strip())
+    if not m:
+        raise SubtitleError(f"bad timestamp: {raw!r}")
+    hours = int(m.group(1)) if m.group(1) else 0
+    minutes, seconds, millis = (int(g) for g in m.groups()[1:])
+    return ((hours * 60 + minutes) * 60 + seconds) * 1000 + millis
+
+
+def parse_vtt(text: str) -> list[Cue]:
+    """Parse the contents of a WebVTT file into a list of Cue objects.
+
+    Cue identifiers, NOTE/STYLE/REGION blocks, and cue settings (position,
+    line, align, etc.) are recognized and discarded; only timing and text
+    are kept.
+    """
+    text = text.strip()
+    if not text.startswith("WEBVTT"):
+        raise SubtitleError("not a WebVTT file: missing WEBVTT header")
+    blocks = re.split(r"\r?\n\r?\n+", text)
+    cues: list[Cue] = []
+    for block in blocks[1:]:
+        lines = [line for line in block.splitlines() if line.strip() != ""]
+        if not lines:
+            continue
+        first = lines[0].strip()
+        if first.startswith(("NOTE", "STYLE", "REGION")):
+            continue
+        # A cue identifier is optional; when present it's the line before
+        # the timing line rather than the line containing '-->'.
+        offset = 0 if "-->" in lines[0] else 1
+        if len(lines) <= offset:
+            raise SubtitleError(f"malformed cue block: {block!r}")
+        ts_match = _VTT_TIMESTAMP_RE.search(lines[offset])
+        if not ts_match:
+            raise SubtitleError(f"missing timestamp line in block: {block!r}")
+        start_ms = parse_vtt_timestamp(ts_match.group(1))
+        end_ms = parse_vtt_timestamp(ts_match.group(2))
+        text_lines = lines[offset + 1:]
+        cues.append(Cue(index=len(cues) + 1, start_ms=start_ms, end_ms=end_ms,
+                         text="\n".join(text_lines)))
+    return cues
+
+
+def parse_any(text: str) -> list[Cue]:
+    """Parse either .srt or WebVTT text, detected from the content."""
+    if text.lstrip().startswith("WEBVTT"):
+        return parse_vtt(text)
+    return parse(text)
 
 
 def dump(cues: list[Cue]) -> str:

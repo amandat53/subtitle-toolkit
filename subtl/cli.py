@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import SubtitleError, dump, find_overlaps, parse, shift, to_vtt
+from . import SubtitleError, dump, find_overlaps, parse_any, shift, to_vtt
 
 
 def _read(path: str) -> str:
@@ -24,19 +24,19 @@ def _write(path: str | None, text: str) -> None:
 
 
 def cmd_shift(args: argparse.Namespace) -> int:
-    cues = parse(_read(args.input))
+    cues = parse_any(_read(args.input))
     _write(args.output, dump(shift(cues, args.milliseconds)))
     return 0
 
 
 def cmd_convert(args: argparse.Namespace) -> int:
-    cues = parse(_read(args.input))
+    cues = parse_any(_read(args.input))
     _write(args.output, to_vtt(cues))
     return 0
 
 
 def cmd_check(args: argparse.Namespace) -> int:
-    cues = parse(_read(args.input))
+    cues = parse_any(_read(args.input))
     overlaps = find_overlaps(cues)
     print(f"{len(cues)} cues")
     if not overlaps:
