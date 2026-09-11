@@ -153,6 +153,28 @@ def find_overlaps(cues: list[Cue]) -> list[tuple[Cue, Cue]]:
     return [(a, b) for a, b in zip(ordered, ordered[1:]) if b.start_ms < a.end_ms]
 
 
+def fix_overlaps(cues: list[Cue]) -> list[Cue]:
+    """Return a new list of cues with overlaps resolved by trimming end times.
+
+    Cues are considered in start-time order; when one runs into the next,
+    its end time is trimmed back to the next cue's start time. Trimming in
+    start order this way also clears any overlap a cue has with later cues
+    beyond its immediate neighbor, since each trim only ever pulls an end
+    time earlier. List order (and index) of the input is preserved.
+    """
+    ordered = sorted(cues, key=lambda c: c.start_ms)
+    new_ends = {}
+    for a, b in zip(ordered, ordered[1:]):
+        end = new_ends.get(id(a), a.end_ms)
+        if b.start_ms < end:
+            new_ends[id(a)] = b.start_ms
+    return [
+        Cue(index=c.index, start_ms=c.start_ms,
+            end_ms=new_ends.get(id(c), c.end_ms), text=c.text)
+        for c in cues
+    ]
+
+
 def to_vtt(cues: list[Cue]) -> str:
     """Render cues as a WebVTT document."""
     lines = ["WEBVTT", ""]

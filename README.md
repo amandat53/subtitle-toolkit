@@ -53,6 +53,13 @@ Check for cues that overlap each other (exit code is 1 if any are found):
 subtl check movie.srt
 ```
 
+Fix overlaps by trimming each cue's end time back to where the next one
+starts:
+
+```
+subtl fix-overlaps movie.srt -o movie-fixed.srt
+```
+
 Any command that takes a file also accepts `-` to read from stdin.
 
 ## Library usage
@@ -75,5 +82,5 @@ it's easy to filter, merge, or rewrite cues by hand before calling `dump`.
 ## Status
 
 Handles well-formed .srt and WebVTT input, and writes .srt or .vtt output.
-Doesn't yet read .ass or .sub, and doesn't fix overlaps automatically. See
-the source for the full surface — it's under 350 lines.
+Can detect and auto-fix overlapping cues. Doesn't yet read .ass or .sub.
+See the source for the full surface — it's under 400 lines.

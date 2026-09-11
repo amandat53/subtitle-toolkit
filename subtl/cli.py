@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import SubtitleError, dump, find_overlaps, parse_any, shift, to_vtt
+from . import SubtitleError, dump, find_overlaps, fix_overlaps, parse_any, shift, to_vtt
 
 
 def _read(path: str) -> str:
@@ -47,6 +47,13 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_fix_overlaps(args: argparse.Namespace) -> int:
+    cues = parse_any(_read(args.input))
+    fixed = fix_overlaps(cues)
+    _write(args.output, dump(fixed))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="subtl", description="Work with .srt subtitle files.")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -65,6 +72,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_check = sub.add_parser("check", help="report cue count and overlapping timestamps")
     p_check.add_argument("input", help="input .srt file, or - for stdin")
     p_check.set_defaults(func=cmd_check)
+
+    p_fix = sub.add_parser(
+        "fix-overlaps", help="trim cue end times so no cue overlaps the next one"
+    )
+    p_fix.add_argument("input", help="input .srt file, or - for stdin")
+    p_fix.add_argument("-o", "--output", help="output file, defaults to stdout")
+    p_fix.set_defaults(func=cmd_fix_overlaps)
 
     return parser
 
