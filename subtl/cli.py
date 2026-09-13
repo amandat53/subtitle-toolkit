@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import SubtitleError, dump, find_overlaps, fix_overlaps, parse_any, shift, to_vtt
+from . import dump, find_overlaps, fix_overlaps, frames_to_ms, parse_any, shift, to_vtt
 
 
 def _read(path: str) -> str:
@@ -25,7 +25,8 @@ def _write(path: str | None, text: str) -> None:
 
 def cmd_shift(args: argparse.Namespace) -> int:
     cues = parse_any(_read(args.input))
-    _write(args.output, dump(shift(cues, args.milliseconds)))
+    offset_ms = frames_to_ms(args.amount, args.fps) if args.fps else round(args.amount)
+    _write(args.output, dump(shift(cues, offset_ms)))
     return 0
 
 
@@ -60,7 +61,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_shift = sub.add_parser("shift", help="shift all timestamps by a fixed offset")
     p_shift.add_argument("input", help="input .srt file, or - for stdin")
-    p_shift.add_argument("milliseconds", type=int, help="offset in ms, may be negative")
+    p_shift.add_argument(
+        "amount", type=float,
+        help="offset in ms, may be negative; a frame count instead if --fps is given"
+    )
+    p_shift.add_argument(
+        "--fps", type=float,
+        help="treat 'amount' as a frame count at this frame rate (e.g. 23.976, 25, 29.97)"
+    )
     p_shift.add_argument("-o", "--output", help="output file, defaults to stdout")
     p_shift.set_defaults(func=cmd_shift)
 
@@ -88,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.func(args)
-    except (SubtitleError, OSError) as exc:
+    except (ValueError, OSError) as exc:
         print(f"subtl: {exc}", file=sys.stderr)
         return 1
 

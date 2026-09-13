@@ -41,6 +41,14 @@ Negative numbers shift earlier:
 subtl shift movie.srt -1200 -o movie-fixed.srt
 ```
 
+If someone gives you the drift as a frame count instead of a time (common
+when the fix came from an editor working against frame numbers), pass
+`--fps` and give the amount in frames instead of milliseconds:
+
+```
+subtl shift movie.srt 3 --fps 23.976 -o movie-fixed.srt
+```
+
 Convert to WebVTT for a browser player:
 
 ```

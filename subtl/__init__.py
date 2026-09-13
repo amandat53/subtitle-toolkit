@@ -138,6 +138,17 @@ def dump(cues: list[Cue]) -> str:
     return "\n".join(parts) + "\n"
 
 
+def frames_to_ms(frames: float, fps: float) -> int:
+    """Convert a frame count at the given frame rate to milliseconds.
+
+    Useful for subtitles that were timed against frame numbers (a common
+    handoff format from video editors) rather than wall-clock time.
+    """
+    if fps <= 0:
+        raise ValueError(f"fps must be positive, got {fps!r}")
+    return round(frames * 1000 / fps)
+
+
 def shift(cues: list[Cue], offset_ms: int) -> list[Cue]:
     """Return a new list of cues with all timestamps shifted by offset_ms."""
     return [
