@@ -16,6 +16,11 @@ _VTT_TIMESTAMP_RE = re.compile(
     r"((?:\d+:)?\d{2}:\d{2}\.\d{3})\s*-->\s*((?:\d+:)?\d{2}:\d{2}\.\d{3})"
 )
 
+# .ass/.ssa timestamps are centisecond precision: H:MM:SS.cc.
+_ASS_TIME_RE = re.compile(r"(\d+):(\d{2}):(\d{2})\.(\d{2})")
+_ASS_SECTION_RE = re.compile(r"^\[(script info|events)\]", re.IGNORECASE | re.MULTILINE)
+_ASS_OVERRIDE_RE = re.compile(r"\{[^}]*\}")
+
 
 class SubtitleError(ValueError):
     """Raised when a subtitle file can't be parsed."""
@@ -119,10 +124,72 @@ def parse_vtt(text: str) -> list[Cue]:
     return cues
 
 
+def parse_ass_timestamp(raw: str) -> int:
+    """Convert an .ass/.ssa timestamp ('H:MM:SS.cc', centisecond precision) to milliseconds."""
+    m = _ASS_TIME_RE.match(raw.strip())
+    if not m:
+        raise SubtitleError(f"bad timestamp: {raw!r}")
+    hours, minutes, seconds, centis = (int(g) for g in m.groups())
+    return ((hours * 60 + minutes) * 60 + seconds) * 1000 + centis * 10
+
+
+def _clean_ass_text(raw: str) -> str:
+    # Override tags carry styling/position ({\an8}, {\pos(...)}, ...); a
+    # plain-text Cue has nowhere to put that, so it's dropped rather than
+    # left in as visible garbage.
+    text = _ASS_OVERRIDE_RE.sub("", raw)
+    return text.replace("\\N", "\n").replace("\\n", "\n").replace("\\h", " ")
+
+
+def parse_ass(text: str) -> list[Cue]:
+    """Parse the [Events] section of an .ass/.ssa file into Cue objects.
+
+    Only dialogue timing and text survive; styles, positioning, and
+    override tags are discarded. The Format line's field order is
+    honored, so both the SSA v4 and ASS v4+ field layouts work.
+    """
+    fields: list[str] | None = None
+    in_events = False
+    cues: list[Cue] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            in_events = line.lower() == "[events]"
+            continue
+        if not in_events or ":" not in line:
+            continue
+        key, _, value = line.partition(":")
+        key = key.strip().lower()
+        if key == "format":
+            fields = [f.strip().lower() for f in value.split(",")]
+        elif key == "dialogue":
+            if fields is None:
+                raise SubtitleError("Dialogue line appears before Format line in [Events]")
+            parts = value.split(",", maxsplit=len(fields) - 1)
+            if len(parts) != len(fields):
+                raise SubtitleError(f"malformed Dialogue line: {line!r}")
+            row = dict(zip(fields, parts))
+            try:
+                start_ms = parse_ass_timestamp(row["start"])
+                end_ms = parse_ass_timestamp(row["end"])
+                raw_text = row["text"]
+            except KeyError as exc:
+                raise SubtitleError(f"Format line is missing a {exc} field") from exc
+            cues.append(Cue(index=len(cues) + 1, start_ms=start_ms, end_ms=end_ms,
+                             text=_clean_ass_text(raw_text)))
+    if fields is None:
+        raise SubtitleError("not an .ass/.ssa file: no [Events] Format line found")
+    return cues
+
+
 def parse_any(text: str) -> list[Cue]:
-    """Parse either .srt or WebVTT text, detected from the content."""
+    """Parse .srt, WebVTT, or .ass/.ssa text, detected from the content."""
     if text.lstrip().startswith("WEBVTT"):
         return parse_vtt(text)
+    if _ASS_SECTION_RE.search(text):
+        return parse_ass(text)
     return parse(text)
 
 

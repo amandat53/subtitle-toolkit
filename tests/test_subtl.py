@@ -10,6 +10,8 @@ from subtl import (
     frames_to_ms,
     parse,
     parse_any,
+    parse_ass,
+    parse_ass_timestamp,
     parse_timestamp,
     parse_vtt,
     parse_vtt_timestamp,
@@ -221,6 +223,106 @@ class OverlapTests(unittest.TestCase):
         ]
         fixed = fix_overlaps(cues)
         self.assertEqual(find_overlaps(fixed), [])
+
+
+ASS_HEADER = """[Script Info]
+Title: Example
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize
+Style: Default,Arial,20
+
+"""
+
+
+class AssTests(unittest.TestCase):
+    def test_parse_ass_timestamp(self):
+        self.assertEqual(parse_ass_timestamp("0:00:01.50"), 1500)
+
+    def test_parse_ass_timestamp_hours(self):
+        self.assertEqual(parse_ass_timestamp("1:02:03.45"), 3723450)
+
+    def test_parse_ass_timestamp_rejects_garbage(self):
+        with self.assertRaises(SubtitleError):
+            parse_ass_timestamp("not a timestamp")
+
+    def test_parse_ass_basic(self):
+        text = ASS_HEADER + (
+            "[Events]\n"
+            "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+            "Dialogue: 0,0:00:01.00,0:00:02.50,Default,,0,0,0,,Hello there!\n"
+        )
+        cues = parse_ass(text)
+        self.assertEqual(cues, [Cue(index=1, start_ms=1000, end_ms=2500, text="Hello there!")])
+
+    def test_parse_ass_keeps_commas_in_text_field(self):
+        text = ASS_HEADER + (
+            "[Events]\n"
+            "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+            "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Second line, with a comma.\n"
+        )
+        cues = parse_ass(text)
+        self.assertEqual(cues[0].text, "Second line, with a comma.")
+
+    def test_parse_ass_honors_ssa_field_order(self):
+        # Old-style SSA uses "Marked" instead of "Layer" as the first field.
+        text = ASS_HEADER + (
+            "[Events]\n"
+            "Format: Marked, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+            "Dialogue: Marked=0,0:00:01.00,0:00:02.00,Default,,0000,0000,0000,,Hi\n"
+        )
+        cues = parse_ass(text)
+        self.assertEqual(cues[0].text, "Hi")
+
+    def test_parse_ass_strips_override_tags(self):
+        text = ASS_HEADER + (
+            "[Events]\n"
+            "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+            "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\an8}Top of screen.\n"
+        )
+        cues = parse_ass(text)
+        self.assertEqual(cues[0].text, "Top of screen.")
+
+    def test_parse_ass_converts_forced_line_breaks(self):
+        text = ASS_HEADER + (
+            "[Events]\n"
+            "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+            "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Line one\\NLine two\n"
+        )
+        cues = parse_ass(text)
+        self.assertEqual(cues[0].text, "Line one\nLine two")
+
+    def test_parse_ass_skips_comment_lines(self):
+        text = ASS_HEADER + (
+            "[Events]\n"
+            "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+            "Comment: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,not shown\n"
+            "Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,shown\n"
+        )
+        cues = parse_ass(text)
+        self.assertEqual(len(cues), 1)
+        self.assertEqual(cues[0].text, "shown")
+
+    def test_parse_ass_requires_events_section(self):
+        with self.assertRaises(SubtitleError):
+            parse_ass(ASS_HEADER)
+
+    def test_parse_ass_dialogue_before_format_raises(self):
+        text = (
+            "[Events]\n"
+            "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Hi\n"
+        )
+        with self.assertRaises(SubtitleError):
+            parse_ass(text)
+
+    def test_parse_any_detects_ass(self):
+        text = ASS_HEADER + (
+            "[Events]\n"
+            "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+            "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Hi\n"
+        )
+        cues = parse_any(text)
+        self.assertEqual(cues[0].text, "Hi")
 
 
 if __name__ == "__main__":
